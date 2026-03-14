@@ -111,18 +111,36 @@
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // ============================================================
-    // CORS PROXY - Using Netlify Function (Our Own!)
+    // SMART CORS PROXY - Auto-detects environment
     // ============================================================
-    // We built our own CORS proxy as a Netlify Function
-    // Benefits:
-    // ✅ 100% reliable (we control it)
-    // ✅ Free (Netlify free tier)
-    // ✅ No rate limits
-    // ✅ Works on Netlify (same origin, no CORS!)
-    // ✅ Secure (only allows Yahoo Finance)
-    const CORS_PROXY = '/.netlify/functions/cors-proxy?url=';
+    // Local (file://) → External proxy (works with origin: null)
+    // Production (Netlify) → Our Netlify Function (reliable, fast)
     
-    console.log('✅ Using Netlify Function CORS proxy');
+    const getCorsProxy = () => {
+      const protocol = window.location.protocol;
+      const hostname = window.location.hostname;
+      
+      // Check if running from file:// protocol
+      if (protocol === 'file:') {
+        // Local file: Use cors.bridged.cc (free, works with origin: null)
+        console.log('🏠 Local file detected - using cors.bridged.cc proxy');
+        return 'https://cors.bridged.cc/';
+      } 
+      // Check if on Netlify
+      else if (hostname.includes('netlify.app')) {
+        // Netlify: Use our own function (same domain, no CORS!)
+        console.log('🌐 Netlify detected - using Netlify Function proxy');
+        return '/.netlify/functions/cors-proxy?url=';
+      }
+      // Any other web server (localhost, etc.)
+      else {
+        // Use cors.bridged.cc as fallback
+        console.log('🖥️ Web server detected - using cors.bridged.cc proxy');
+        return 'https://cors.bridged.cc/';
+      }
+    };
+    
+    const CORS_PROXY = getCorsProxy();
 
     // Initialize dark mode
     const savedTheme = localStorage.getItem('portfolio_theme') || 'dark';
@@ -1209,6 +1227,7 @@ Your cloud data now matches localStorage exactly.`;
 
       const [showAddPosition, setShowAddPosition] = useState(false);
       const [editingPosition, setEditingPosition] = useState(null);
+      const [showEditPosition, setShowEditPosition] = useState(false);
       const [showAddSnapshot, setShowAddSnapshot] = useState(false);
       const [editingSnapshot, setEditingSnapshot] = useState(null);
       const [newSnapshot, setNewSnapshot] = useState({ date: '', value: '' });
@@ -2848,6 +2867,7 @@ ${portfolioData.map(p => `
 
       const startEditPosition = (pos) => {
         setEditingPosition(pos.id);
+        setShowEditPosition(true);
         
         // For Cash/Crypto positions, show PLN value (totalValue)
         let totalValueForEdit = '';
@@ -2873,6 +2893,9 @@ ${portfolioData.map(p => `
           currentPrice: currentPriceForEdit,
           totalValue: totalValueForEdit
         });
+        
+        // Scroll to top smoothly
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       };
 
       const updatePosition = () => {
@@ -2900,6 +2923,7 @@ ${portfolioData.map(p => `
               : pos
           ));
           setEditingPosition(null);
+          setShowEditPosition(false);
           setNewPosition({ symbol: '', name: '', type: 'Stocks (Global)', subType: '', tags: [], quantity: '', avgPrice: '', currentPrice: '', totalValue: '' });
           return;
         }
@@ -2930,6 +2954,7 @@ ${portfolioData.map(p => `
               : pos
           ));
           setEditingPosition(null);
+          setShowEditPosition(false);
           setNewPosition({ symbol: '', name: '', type: 'Stocks (Global)', subType: '', tags: [], quantity: '', avgPrice: '', currentPrice: '', totalValue: '' });
         }
       };
@@ -8239,6 +8264,230 @@ Check console (F12) for details.`);
                   </div>
                 )}
 
+                {/* Edit Position Form */}
+                {showEditPosition && editingPosition && (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl shadow-sm p-6 border-2 border-amber-300 dark:border-amber-700">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">✏️ Edit Position</h3>
+                      <button
+                        onClick={() => {
+                          setShowEditPosition(false);
+                          setEditingPosition(null);
+                          setNewPosition({ symbol: '', name: '', type: 'Stocks (Global)', subType: '', tags: [], quantity: '', avgPrice: '', currentPrice: '', totalValue: '' });
+                        }}
+                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Asset Type */}
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Asset Type *</label>
+                        <select
+                          value={newPosition.type}
+                          onChange={(e) => setNewPosition({ ...newPosition, type: e.target.value })}
+                          className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        >
+                          {assetTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Conditional fields based on type */}
+                      {newPosition.type === 'Cash' || newPosition.type === 'Crypto' ? (
+                        <>
+                          {/* Name for Cash/Crypto */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name *</label>
+                            <input
+                              type="text"
+                              placeholder={newPosition.type === 'Cash' ? 'e.g., Savings Account' : 'e.g., Bitcoin'}
+                              value={newPosition.name}
+                              onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          {/* Total Value for Cash/Crypto */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Total Value (PLN) *</label>
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              value={newPosition.totalValue}
+                              onChange={(e) => setNewPosition({ ...newPosition, totalValue: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Enter value in PLN</p>
+                          </div>
+
+                          {/* Tags for Cash/Crypto */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tags (optional)</label>
+                            <div className="flex gap-3">
+                              {availableTags.map(tag => (
+                                <label key={tag} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={newPosition.tags.includes(tag)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setNewPosition({ ...newPosition, tags: [...newPosition.tags, tag] });
+                                      } else {
+                                        setNewPosition({ ...newPosition, tags: newPosition.tags.filter(t => t !== tag) });
+                                      }
+                                    }}
+                                    className="w-4 h-4 text-amber-600 border-slate-300 dark:border-slate-600 rounded focus:ring-amber-500"
+                                  />
+                                  <span className="text-sm text-slate-700 dark:text-slate-300">{tag}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Symbol for Stocks/ETFs/etc */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                              Symbol (optional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g., AAPL.US, PKO.PL"
+                              value={newPosition.symbol}
+                              onChange={(e) => setNewPosition({ ...newPosition, symbol: e.target.value.toUpperCase() })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          {/* Name */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Name *</label>
+                            <input
+                              type="text"
+                              placeholder="e.g., Apple Inc."
+                              value={newPosition.name}
+                              onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          {/* Sub-Type (for Precious Metals) */}
+                          {newPosition.type === 'Precious Metals' && (
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Metal Type</label>
+                              <select
+                                value={newPosition.subType}
+                                onChange={(e) => setNewPosition({ ...newPosition, subType: e.target.value })}
+                                className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                              >
+                                <option value="">Select metal...</option>
+                                {preciousMetalsSubTypes.map(subType => (
+                                  <option key={subType} value={subType}>{subType}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Quantity */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Quantity *</label>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={newPosition.quantity}
+                              onChange={(e) => setNewPosition({ ...newPosition, quantity: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                          </div>
+
+                          {/* Average Price */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                              Avg Price ({newPosition.type === 'Stocks (PL)' ? 'PLN' : '$'}) *
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="0.00"
+                              value={newPosition.avgPrice}
+                              onChange={(e) => setNewPosition({ ...newPosition, avgPrice: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                            {newPosition.type === 'Stocks (PL)' && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Enter price in PLN</p>
+                            )}
+                          </div>
+
+                          {/* Current Price */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                              Current Price ({newPosition.type === 'Stocks (PL)' ? 'PLN' : '$'})
+                            </label>
+                            <input
+                              type="number"
+                              placeholder="Optional"
+                              value={newPosition.currentPrice}
+                              onChange={(e) => setNewPosition({ ...newPosition, currentPrice: e.target.value })}
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                            />
+                            {newPosition.type === 'Stocks (PL)' && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Enter price in PLN</p>
+                            )}
+                          </div>
+
+                          {/* Tags */}
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tags (optional)</label>
+                            <div className="flex gap-3">
+                              {availableTags.map(tag => (
+                                <label key={tag} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={newPosition.tags.includes(tag)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setNewPosition({ ...newPosition, tags: [...newPosition.tags, tag] });
+                                      } else {
+                                        setNewPosition({ ...newPosition, tags: newPosition.tags.filter(t => t !== tag) });
+                                      }
+                                    }}
+                                    className="w-4 h-4 text-amber-600 border-slate-300 dark:border-slate-600 rounded focus:ring-amber-500"
+                                  />
+                                  <span className="text-sm text-slate-700 dark:text-slate-300">{tag}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 mt-6">
+                      <button
+                        onClick={updatePosition}
+                        className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
+                      >
+                        Update Position
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowEditPosition(false);
+                          setEditingPosition(null);
+                          setNewPosition({ symbol: '', name: '', type: 'Stocks (Global)', subType: '', tags: [], quantity: '', avgPrice: '', currentPrice: '', totalValue: '' });
+                        }}
+                        className="px-6 py-2 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-slate-50 dark:bg-slate-800 rounded-xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
                     <div className="flex items-start gap-3">
@@ -8397,261 +8646,22 @@ Check console (F12) for details.`);
                           const priceInfo = displayPriceData[pos.symbol];
                           const change24h = priceInfo?.change24h || 0;
                           const hasRealPrice = !!priceInfo;
-                          const isEditing = editingPosition === pos.id;
                           
                           return (
-                            <tr key={pos.id} className="hover:bg-slate-100 dark:bg-slate-700">
-                              {isEditing ? (
-                                <>
-                                  {newPosition.type === 'Cash' || newPosition.type === 'Crypto' ? (
-                                    <>
-                                      {/* % Port - not editable */}
-                                      <td className="px-4 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* Symbol - not applicable for Cash/Crypto */}
-                                      <td className="px-6 py-4 text-sm text-slate-400">-</td>
-                                      
-                                      {/* Name */}
-                                      <td className="px-6 py-4">
-                                        <input
-                                          type="text"
-                                          value={newPosition.name}
-                                          onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })}
-                                          placeholder="Name"
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                      </td>
-                                      
-                                      {/* Type */}
-                                      <td className="px-6 py-4">
-                                        <select
-                                          value={newPosition.type}
-                                          onChange={(e) => setNewPosition({ ...newPosition, type: e.target.value })}
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        >
-                                          {assetTypes.map(type => (
-                                            <option key={type} value={type}>{type}</option>
-                                          ))}
-                                        </select>
-                                      </td>
-                                      
-                                      {/* Sub-Type - not applicable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400">-</td>
-                                      
-                                      {/* Tags */}
-                                      <td className="px-6 py-4">
-                                        <div className="flex gap-2 flex-wrap">
-                                          {availableTags.map(tag => (
-                                            <label key={tag} className="flex items-center gap-1 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                checked={newPosition.tags.includes(tag)}
-                                                onChange={(e) => {
-                                                  if (e.target.checked) {
-                                                    setNewPosition({ ...newPosition, tags: [...newPosition.tags, tag] });
-                                                  } else {
-                                                    setNewPosition({ ...newPosition, tags: newPosition.tags.filter(t => t !== tag) });
-                                                  }
-                                                }}
-                                                className="w-3 h-3 text-blue-600 border-slate-300 dark:border-slate-600 rounded"
-                                              />
-                                              <span className="text-xs text-slate-700 dark:text-slate-300">{tag}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </td>
-                                      
-                                      {/* Quantity - not applicable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* Current Price - not applicable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* Avg Price - not applicable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* Total Value */}
-                                      <td className="px-6 py-4">
-                                        <div className="text-right">
-                                          <input
-                                            type="number"
-                                            value={newPosition.totalValue}
-                                            onChange={(e) => setNewPosition({ ...newPosition, totalValue: e.target.value })}
-                                            placeholder="0.00"
-                                            className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          />
-                                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">PLN</div>
-                                        </div>
-                                      </td>
-                                      
-                                      {/* 24h Change - not applicable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {/* % Port - not editable */}
-                                      <td className="px-4 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* Symbol */}
-                                      <td className="px-6 py-4">
-                                        <input
-                                          type="text"
-                                          value={newPosition.symbol}
-                                          onChange={(e) => setNewPosition({ ...newPosition, symbol: e.target.value.toUpperCase() })}
-                                          placeholder="SYMBOL.EXCHANGE"
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                      </td>
-                                      
-                                      {/* Name */}
-                                      <td className="px-6 py-4">
-                                        <input
-                                          type="text"
-                                          value={newPosition.name}
-                                          onChange={(e) => setNewPosition({ ...newPosition, name: e.target.value })}
-                                          placeholder="Name"
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                      </td>
-                                      
-                                      {/* Type */}
-                                      <td className="px-6 py-4">
-                                        <select
-                                          value={newPosition.type}
-                                          onChange={(e) => setNewPosition({ ...newPosition, type: e.target.value })}
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        >
-                                          {assetTypes.map(type => (
-                                            <option key={type} value={type}>{type}</option>
-                                          ))}
-                                        </select>
-                                      </td>
-                                      
-                                      {/* Sub-Type */}
-                                      <td className="px-6 py-4">
-                                        {newPosition.type === 'Precious Metals' ? (
-                                          <select
-                                            value={newPosition.subType}
-                                            onChange={(e) => setNewPosition({ ...newPosition, subType: e.target.value })}
-                                            className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          >
-                                            <option value="">-</option>
-                                            {preciousMetalsSubTypes.map(subType => (
-                                              <option key={subType} value={subType}>{subType}</option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <span className="text-xs text-slate-400">-</span>
-                                        )}
-                                      </td>
-                                      
-                                      {/* Tags */}
-                                      <td className="px-6 py-4">
-                                        <div className="flex gap-2 flex-wrap">
-                                          {availableTags.map(tag => (
-                                            <label key={tag} className="flex items-center gap-1 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                checked={newPosition.tags.includes(tag)}
-                                                onChange={(e) => {
-                                                  if (e.target.checked) {
-                                                    setNewPosition({ ...newPosition, tags: [...newPosition.tags, tag] });
-                                                  } else {
-                                                    setNewPosition({ ...newPosition, tags: newPosition.tags.filter(t => t !== tag) });
-                                                  }
-                                                }}
-                                                className="w-3 h-3 text-blue-600 border-slate-300 dark:border-slate-600 rounded"
-                                              />
-                                              <span className="text-xs text-slate-700 dark:text-slate-300">{tag}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </td>
-                                      
-                                      {/* Quantity */}
-                                      <td className="px-6 py-4">
-                                        <input
-                                          type="number"
-                                          value={newPosition.quantity}
-                                          onChange={(e) => setNewPosition({ ...newPosition, quantity: e.target.value })}
-                                          placeholder="0"
-                                          className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        />
-                                      </td>
-                                      
-                                      {/* Current Price */}
-                                      <td className="px-6 py-4">
-                                        <div className="text-right">
-                                          <input
-                                            type="number"
-                                            value={newPosition.currentPrice}
-                                            onChange={(e) => setNewPosition({ ...newPosition, currentPrice: e.target.value })}
-                                            placeholder="0.00"
-                                            className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          />
-                                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                            {newPosition.type === 'Stocks (PL)' ? 'PLN' : 'USD'}
-                                          </div>
-                                        </div>
-                                      </td>
-                                      
-                                      {/* Average Price */}
-                                      <td className="px-6 py-4">
-                                        <div className="text-right">
-                                          <input
-                                            type="number"
-                                            value={newPosition.avgPrice}
-                                            onChange={(e) => setNewPosition({ ...newPosition, avgPrice: e.target.value })}
-                                            placeholder="0.00"
-                                            className="w-full px-2 py-1 text-sm bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600 rounded text-right focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                          />
-                                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                            {newPosition.type === 'Stocks (PL)' ? 'PLN' : 'USD'}
-                                          </div>
-                                        </div>
-                                      </td>
-                                      
-                                      {/* Total Value - calculated, not editable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                      
-                                      {/* 24h Change - not editable */}
-                                      <td className="px-6 py-4 text-sm text-slate-400 text-right">-</td>
-                                    </>
-                                  )}
-                                  
-                                  {/* Actions */}
-                                  <td className="px-6 py-4 text-sm text-right">
-                                    <div className="flex gap-2 justify-end flex-wrap">
-                                      <button
-                                        onClick={updatePosition}
-                                        className="text-green-600 hover:text-green-800 dark:hover:text-green-400 font-medium min-h-[44px] px-2"
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        onClick={cancelEdit}
-                                        className="text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-medium min-h-[44px] px-2"
-                                      >
-                                        Cancel
-                                      </button>
+                            <tr key={pos.id} className="hover:bg-slate-100 dark:hover:bg-slate-700">
+                              <td className="px-4 py-4 text-xs text-right">
+                                {(() => {
+                                  // Convert position value to PLN for consistent percentage
+                                  const isPLN = pos.currency === 'PLN' || (pos.symbol && pos.symbol.includes('.PL'));
+                                  const valuePLN = isPLN ? totalValue : (totalValue * usdToPlnRate);
+                                  const portfolioPercent = totalPortfolioValue > 0 ? (valuePLN / totalPortfolioValue * 100) : 0;
+                                  return (
+                                    <div className="font-medium text-slate-700 dark:text-slate-300">
+                                      {portfolioPercent.toFixed(2)}%
                                     </div>
-                                  </td>
-                                </>
-                              ) : (
-                                <>
-                                  <td className="px-4 py-4 text-xs text-right">
-                                    {(() => {
-                                      // Convert position value to PLN for consistent percentage
-                                      const isPLN = pos.currency === 'PLN' || (pos.symbol && pos.symbol.includes('.PL'));
-                                      const valuePLN = isPLN ? totalValue : (totalValue * usdToPlnRate);
-                                      const portfolioPercent = totalPortfolioValue > 0 ? (valuePLN / totalPortfolioValue * 100) : 0;
-                                      return (
-                                        <div className="font-medium text-slate-700 dark:text-slate-300">
-                                          {portfolioPercent.toFixed(2)}%
-                                        </div>
-                                      );
-                                    })()}
-                                  </td>
+                                  );
+                                })()}
+                              </td>
                                   <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-50">
                                     <div className="flex items-center gap-2">
                                       <button
@@ -8762,8 +8772,7 @@ Check console (F12) for details.`);
                                       </button>
                                     </div>
                                   </td>
-                                </>
-                              )}
+                              
                             </tr>
                           );
                         });
