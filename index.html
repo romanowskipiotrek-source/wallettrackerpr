@@ -629,7 +629,8 @@
           console.error('Error loading snapshots:', error);
           return [];
         }
-        return (data || []).map(s => ({
+        return (data || []).map((s, index) => ({
+          id: Date.now() + index, // Generate unique ID for each snapshot
           date: s.date,
           value: parseFloat(s.value),
           note: s.note
@@ -1215,8 +1216,13 @@ Your cloud data now matches localStorage exactly.`;
         if (savedSnapshots) {
           try {
             const parsed = JSON.parse(savedSnapshots);
+            // Ensure all snapshots have IDs (add if missing)
+            const withIds = parsed.map((s, index) => ({
+              ...s,
+              id: s.id || Date.now() + index // Add ID if missing
+            }));
             // Sort by date (newest first)
-            const sorted = [...parsed].sort((a, b) => new Date(b.date) - new Date(a.date));
+            const sorted = [...withIds].sort((a, b) => new Date(b.date) - new Date(a.date));
             console.log('📂 Loaded', sorted.length, 'value snapshots from localStorage');
             return sorted;
           } catch (error) {
@@ -1502,10 +1508,18 @@ Your cloud data now matches localStorage exactly.`;
         };
       };
 
+      // Helper function to sort snapshots by date (newest first)
+      const sortSnapshotsByDate = (snapshots) => {
+        return [...snapshots].sort((a, b) => new Date(b.date) - new Date(a.date));
+      };
+
       // Use either real or mock data based on demoMode
       const mockData = React.useMemo(() => demoMode ? generateMockData() : null, [demoMode]);
       const displayPositions = demoMode && mockData ? mockData.positions : positions;
-      const displaySnapshots = demoMode && mockData ? mockData.snapshots : valueSnapshots;
+      const displaySnapshots = React.useMemo(() => {
+        const snapshots = demoMode && mockData ? mockData.snapshots : valueSnapshots;
+        return sortSnapshotsByDate(snapshots);
+      }, [demoMode, mockData, valueSnapshots]);
       const displayWatchlist = demoMode && mockData ? mockData.watchlist : watchlist;
       const displayAccounts = demoMode && mockData ? mockData.accounts : accounts;
       const displayPriceData = demoMode && mockData ? mockData.priceData : priceData;
@@ -3410,10 +3424,6 @@ ${portfolioData.map(p => `
       };
 
       // Value snapshot functions
-      const sortSnapshotsByDate = (snapshots) => {
-        return [...snapshots].sort((a, b) => new Date(b.date) - new Date(a.date));
-      };
-
       const addSnapshot = (date, value) => {
         const snapshot = {
           id: Date.now(),
@@ -3431,8 +3441,43 @@ ${portfolioData.map(p => `
         }
       };
 
-      const deleteSnapshot = (id) => {
-        setValueSnapshots(displaySnapshots.filter(s => s.id !== id));
+      const deleteSnapshot = async (id) => {
+        console.log('=== DELETE SNAPSHOT DEBUG ===');
+        console.log('🗑️ Trying to delete snapshot with id:', id, 'Type:', typeof id);
+        
+        let deletedSnapshot = null;
+        
+        setValueSnapshots(prevSnapshots => {
+          console.log('📊 Current snapshots count:', prevSnapshots.length);
+          console.log('📊 All snapshot IDs:', prevSnapshots.map(s => ({ id: s.id, type: typeof s.id, date: s.date })));
+          
+          // Find the snapshot to delete
+          deletedSnapshot = prevSnapshots.find(s => s.id === id);
+          console.log('🔍 Found snapshot to delete:', deletedSnapshot);
+          
+          if (!deletedSnapshot) {
+            console.error('❌ ERROR: Snapshot with id', id, 'not found in array!');
+            return prevSnapshots; // Return unchanged if not found
+          }
+          
+          // Filter out the snapshot
+          const filtered = prevSnapshots.filter(s => s.id !== id);
+          console.log('✅ Filtered snapshots count:', filtered.length);
+          console.log('✅ Deleted 1 snapshot, remaining:', filtered.map(s => s.date));
+          
+          // Safety check - make sure we didn't delete everything
+          if (filtered.length === 0 && prevSnapshots.length > 1) {
+            console.error('❌ ERROR: Filter would delete all snapshots! Aborting.');
+            return prevSnapshots; // Return unchanged
+          }
+          
+          return filtered;
+        });
+        
+        // Also delete from cloud if user is logged in (after state update)
+        if (deletedSnapshot && user) {
+          await deleteSnapshotFromCloud(deletedSnapshot.date);
+        }
       };
 
       const addCurrentSnapshot = () => {
@@ -3451,11 +3496,13 @@ ${portfolioData.map(p => `
 
       const updateSnapshot = () => {
         if (newSnapshot.date && newSnapshot.value) {
-          setValueSnapshots(sortSnapshotsByDate(displaySnapshots.map(s =>
-            s.id === editingSnapshot
-              ? { ...s, date: newSnapshot.date, value: parseFloat(newSnapshot.value) }
-              : s
-          )));
+          setValueSnapshots(prevSnapshots => 
+            sortSnapshotsByDate(prevSnapshots.map(s =>
+              s.id === editingSnapshot
+                ? { ...s, date: newSnapshot.date, value: parseFloat(newSnapshot.value) }
+                : s
+            ))
+          );
           setEditingSnapshot(null);
           setNewSnapshot({ date: '', value: '' });
         }
@@ -11424,7 +11471,7 @@ Check console (F12) for details.`);
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                               {displaySnapshots.map((snapshot, index) => {
-                            const previousSnapshot = valueSnapshots[index + 1];
+                            const previousSnapshot = displaySnapshots[index + 1];
                             const change = previousSnapshot ? snapshot.value - previousSnapshot.value : 0;
                             const changePercent = previousSnapshot ? ((snapshot.value - previousSnapshot.value) / previousSnapshot.value) * 100 : 0;
                             const isEditing = editingSnapshot === snapshot.id;
