@@ -2338,7 +2338,24 @@ ${portfolioData.map(p => `
           
           // 4. Fetch news from Finnhub (last 24 hours)
           console.log('📰 Fetching precious metals news...');
-          const finnhubApiKey = 'd693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg';
+          
+          if (!apiKeys.finnhub) {
+            console.warn('⚠️ Finnhub API key not configured, skipping news fetch');
+            setRatiosData(prev => ({
+              ...prev,
+              goldPrice,
+              silverPrice,
+              dowPrice,
+              goldSilverRatio,
+              dowGoldRatio,
+              bubbleProximity: overallBubbleProximity,
+              lastUpdated: new Date().toISOString()
+            }));
+            setLoadingRatios(false);
+            return;
+          }
+          
+          const finnhubApiKey = apiKeys.finnhub;
           const toDate = Math.floor(Date.now() / 1000); // Current time in Unix timestamp
           const fromDate = toDate - (24 * 60 * 60); // 24 hours ago
           
@@ -2474,8 +2491,14 @@ ${portfolioData.map(p => `
         try {
           console.log('🔍 Starting comprehensive analysis for:', position.symbol);
           
-          const finnhubApiKey = 'd693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg';
-          const groqApiKey = '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';
+          if (!apiKeys.finnhub || !apiKeys.groq) {
+            alert('❌ Missing API keys!\n\nPlease configure Finnhub and Groq API keys in Settings to use position analysis.');
+            setAnalyzingPosition(null);
+            return;
+          }
+          
+          const finnhubApiKey = apiKeys.finnhub;
+          const groqApiKey = apiKeys.groq;
           const isWatchlistItem = !position.quantity;
           
           // Extract base symbol for API calls
@@ -3918,7 +3941,14 @@ ${portfolioData.map(p => `
         try {
           console.log('📅 Fetching earnings calendar (stock by stock)...');
           
-          const finnhubApiKey = 'd693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg';
+          if (!apiKeys.finnhub) {
+            console.warn('⚠️ Finnhub API key not configured');
+            alert('❌ Finnhub API key not configured.\n\nPlease add your Finnhub API key in Settings to fetch earnings data.');
+            setLoadingEarnings(false);
+            return;
+          }
+          
+          const finnhubApiKey = apiKeys.finnhub;
           
           // Helper function to strip exchange suffix from symbol
           // NVDA.US → NVDA, PKO.PL → PKO, ENEL.MI → ENEL, etc.
@@ -4386,11 +4416,15 @@ ${portfolioData.map(p => `
           // Strip exchange suffix for Finnhub (e.g., NVDA.US → NVDA)
           const cleanSymbol = stripExchangeSuffix(symbol);
           
+          if (!apiKeys.finnhub) {
+            return { error: 'Finnhub API key not configured. Please add it in Settings.' };
+          }
+          
           const toDate = new Date();
           const fromDate = new Date();
           fromDate.setDate(fromDate.getDate() - 7);
           
-          const url = `https://finnhub.io/api/v1/company-news?symbol=${cleanSymbol}&from=${fromDate.toISOString().split('T')[0]}&to=${toDate.toISOString().split('T')[0]}&token=d693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg`;
+          const url = `https://finnhub.io/api/v1/company-news?symbol=${cleanSymbol}&from=${fromDate.toISOString().split('T')[0]}&to=${toDate.toISOString().split('T')[0]}&token=${apiKeys.finnhub}`;
           const response = await fetch(url);
           const data = await response.json();
           
@@ -4413,7 +4447,11 @@ ${portfolioData.map(p => `
           // Strip exchange suffix for Finnhub (e.g., NVDA.US → NVDA)
           const cleanSymbol = stripExchangeSuffix(symbol);
           
-          const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSymbol}&token=d693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg`;
+          if (!apiKeys.finnhub) {
+            return { error: 'Finnhub API key not configured. Please add it in Settings.' };
+          }
+          
+          const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${cleanSymbol}&token=${apiKeys.finnhub}`;
           const response = await fetch(url);
           const data = await response.json();
           
@@ -4438,7 +4476,11 @@ ${portfolioData.map(p => `
           // Strip exchange suffix for Finnhub (e.g., NVDA.US → NVDA)
           const cleanSymbol = stripExchangeSuffix(symbol);
           
-          const url = `https://finnhub.io/api/v1/stock/metric?symbol=${cleanSymbol}&metric=all&token=d693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg`;
+          if (!apiKeys.finnhub) {
+            return { error: 'Finnhub API key not configured. Please add it in Settings.' };
+          }
+          
+          const url = `https://finnhub.io/api/v1/stock/metric?symbol=${cleanSymbol}&metric=all&token=${apiKeys.finnhub}`;
           const response = await fetch(url);
           const data = await response.json();
           
@@ -4466,7 +4508,11 @@ ${portfolioData.map(p => `
           // Strip exchange suffix for Finnhub (e.g., NVDA.US → NVDA)
           const cleanSymbol = stripExchangeSuffix(symbol);
           
-          const url = `https://finnhub.io/api/v1/stock/recommendation?symbol=${cleanSymbol}&token=d693r91r01qs7u9kl8h0d693r91r01qs7u9kl8hg`;
+          if (!apiKeys.finnhub) {
+            return { error: 'Finnhub API key not configured. Please add it in Settings.' };
+          }
+          
+          const url = `https://finnhub.io/api/v1/stock/recommendation?symbol=${cleanSymbol}&token=${apiKeys.finnhub}`;
           const response = await fetch(url);
           const data = await response.json();
           
