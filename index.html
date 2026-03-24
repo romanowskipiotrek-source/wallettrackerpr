@@ -1110,6 +1110,9 @@ Your cloud data now matches localStorage exactly.`;
       // Asset Allocation positions popup state
       const [selectedAssetType, setSelectedAssetType] = useState(null);
       
+      // IKE/IKZE asset allocation popup state
+      const [selectedIkeIkzeAssetType, setSelectedIkeIkzeAssetType] = useState(null);
+      
       // Custom tooltip ref for Top Performers/Underperformers (using ref to avoid re-renders)
       const customTooltipRef = React.useRef(null);
       
@@ -5301,6 +5304,28 @@ Remember: You have full access to real-time market data through functions - use 
           }, []);
       }, [displayPositions, usdToPlnRate]);
 
+      // IKE/IKZE asset allocation
+      const ikeIkzeAllocation = React.useMemo(() => {
+        return displayPositions
+          .filter(pos => pos.tags && (pos.tags.includes('IKE') || pos.tags.includes('IKZE')))
+          .reduce((acc, pos) => {
+            // Calculate value in native currency
+            const valueNative = pos.quantity * pos.currentPrice;
+            
+            // Convert to PLN for consistent comparison
+            const isPLN = pos.currency === 'PLN' || (pos.symbol && pos.symbol.includes('.PL'));
+            const valuePLN = isPLN ? valueNative : (valueNative * usdToPlnRate);
+            
+            const existing = acc.find(a => a.name === pos.type);
+            if (existing) {
+              existing.value += valuePLN;
+            } else {
+              acc.push({ name: pos.type, value: valuePLN });
+            }
+            return acc;
+          }, []);
+      }, [displayPositions, usdToPlnRate]);
+
       const COLORS = {
         'Precious Metals': '#f59e0b',      // Amber/Orange
         'Uranium': '#10b981',               // Emerald/Green
@@ -5327,6 +5352,8 @@ Remember: You have full access to real-time market data through functions - use 
       const pieChartInstance = React.useRef(null);
       const pmPieChartRef = React.useRef(null);
       const pmPieChartInstance = React.useRef(null);
+      const ikePieChartRef = React.useRef(null);
+      const ikePieChartInstance = React.useRef(null);
       const positionsPieChartRef = React.useRef(null);
       const positionsPieChartInstance = React.useRef(null);
       const positionsBarChartRef = React.useRef(null);
@@ -5492,6 +5519,80 @@ Remember: You have full access to real-time market data through functions - use 
           }
         };
       }, [preciousMetalsAllocation, activeTab]);
+
+      // IKE/IKZE pie chart effect
+      React.useEffect(() => {
+        if (activeTab === 'dashboard' && ikePieChartRef.current && ikeIkzeAllocation.length > 0) {
+          const ctx = ikePieChartRef.current.getContext('2d');
+          
+          // Destroy existing chart
+          if (ikePieChartInstance.current) {
+            ikePieChartInstance.current.destroy();
+          }
+
+          // Create new chart
+          ikePieChartInstance.current = new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: ikeIkzeAllocation.map(a => a.name),
+              datasets: [{
+                data: ikeIkzeAllocation.map(a => a.value), // Already in PLN
+                backgroundColor: ikeIkzeAllocation.map(a => COLORS[a.name] || '#64748b'),
+                borderWidth: 2,
+                borderColor: '#ffffff'
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              onClick: (event, activeElements) => {
+                if (activeElements.length > 0) {
+                  const index = activeElements[0].index;
+                  const assetType = ikeIkzeAllocation[index].name;
+                  setSelectedIkeIkzeAssetType(assetType);
+                }
+              },
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: {
+                    padding: 15,
+                    font: {
+                      size: 12
+                    }
+                  },
+                  onClick: (event, legendItem, legend) => {
+                    // Handle legend click to show positions
+                    const assetType = legendItem.text;
+                    setSelectedIkeIkzeAssetType(assetType);
+                  }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      const label = context.label || '';
+                      const value = context.parsed || 0;
+                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                      const percentage = ((value / total) * 100).toFixed(1);
+                      return `${label}: ${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN (${percentage}%)`;
+                    }
+                  }
+                },
+                datalabels: {
+                  display: false
+                }
+              }
+            }
+          });
+        }
+
+        // Cleanup
+        return () => {
+          if (ikePieChartInstance.current) {
+            ikePieChartInstance.current.destroy();
+          }
+        };
+      }, [ikeIkzeAllocation, activeTab]);
 
       // Individual Positions pie chart effect
       React.useEffect(() => {
@@ -8374,6 +8475,67 @@ Check console (F12) for details.`);
                         })}
                         <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
                           💡 Click on any metal to see detailed positions
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
+                {/* IKE/IKZE Asset Allocation */}
+                {ikeIkzeAllocation.length > 0 && (
+                  <div className="bg-slate-50 dark:bg-slate-800 rounded-xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4">IKE/IKZE Asset Allocation</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Pie Chart */}
+                      <div className="flex items-center justify-center">
+                        <div style={{ maxWidth: '300px', maxHeight: '300px' }}>
+                          <canvas ref={ikePieChartRef}></canvas>
+                        </div>
+                      </div>
+
+                      {/* Legend with values */}
+                      <div className="space-y-3">
+                        {ikeIkzeAllocation.map((asset) => {
+                          const totalIkeIkze = ikeIkzeAllocation.reduce((sum, a) => sum + a.value, 0);
+                          const percentage = (asset.value / totalIkeIkze) * 100;
+                          const plnValue = asset.value; // Already in PLN
+                          return (
+                            <div 
+                              key={asset.name} 
+                              onClick={() => setSelectedIkeIkzeAssetType(asset.name)}
+                              className="flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-700 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors group"
+                              title={`Click to see all ${asset.name} positions with IKE/IKZE tag`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div 
+                                  className="w-4 h-4 rounded-full group-hover:scale-110 transition-transform" 
+                                  style={{ backgroundColor: COLORS[asset.name] || '#64748b' }}
+                                ></div>
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100">
+                                  {asset.name} →
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                  {plnValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                                </div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">{percentage.toFixed(1)}%</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="pt-3 mt-3 border-t border-slate-300 dark:border-slate-600">
+                          <div className="flex items-center justify-between px-3">
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Total IKE/IKZE Value</span>
+                            <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                              {ikeIkzeAllocation.reduce((sum, a) => sum + a.value, 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
+                          💡 Click on any asset type to see IKE/IKZE positions
                         </p>
                       </div>
                     </div>
@@ -12263,6 +12425,207 @@ Check console (F12) for details.`);
                 <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
                   <button
                     onClick={() => setSelectedAssetType(null)}
+                    className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* IKE/IKZE Positions Modal */}
+          {selectedIkeIkzeAssetType && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm"
+              onClick={() => setSelectedIkeIkzeAssetType(null)}
+            >
+              <div 
+                className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden border border-slate-200 dark:border-slate-700"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div 
+                  className="px-6 py-4 border-b border-slate-200 dark:border-slate-700"
+                  style={{ 
+                    background: `linear-gradient(135deg, ${COLORS[selectedIkeIkzeAssetType]}15, ${COLORS[selectedIkeIkzeAssetType]}05)`
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-8 h-8 rounded-full"
+                        style={{ backgroundColor: COLORS[selectedIkeIkzeAssetType] }}
+                      ></div>
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                          {selectedIkeIkzeAssetType} IKE/IKZE Positions
+                        </h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          All your {selectedIkeIkzeAssetType.toLowerCase()} holdings with IKE or IKZE tag
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedIkeIkzeAssetType(null)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Positions List */}
+                <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
+                  {(() => {
+                    const ikeIkzePositions = displayPositions.filter(pos => 
+                      pos.type === selectedIkeIkzeAssetType && 
+                      pos.tags && 
+                      (pos.tags.includes('IKE') || pos.tags.includes('IKZE'))
+                    );
+
+                    if (ikeIkzePositions.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                          No {selectedIkeIkzeAssetType.toLowerCase()} IKE/IKZE positions found
+                        </div>
+                      );
+                    }
+
+                    const totalIkeIkzeValue = ikeIkzePositions.reduce((sum, pos) => {
+                      const valueNative = pos.quantity * pos.currentPrice;
+                      const isPLN = pos.currency === 'PLN' || (pos.symbol && pos.symbol.includes('.PL'));
+                      return sum + (isPLN ? valueNative : valueNative * usdToPlnRate);
+                    }, 0);
+
+                    return (
+                      <div className="space-y-3">
+                        {/* Summary Card */}
+                        <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400">Total {selectedIkeIkzeAssetType} IKE/IKZE Value</div>
+                              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                                {totalIkeIkzeValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-slate-600 dark:text-slate-400">Positions</div>
+                              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                                {ikeIkzePositions.length}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Position Cards */}
+                        {ikeIkzePositions.map(pos => {
+                          const valueNative = pos.quantity * pos.currentPrice;
+                          const isPLN = pos.currency === 'PLN' || (pos.symbol && pos.symbol.includes('.PL'));
+                          const valuePLN = isPLN ? valueNative : valueNative * usdToPlnRate;
+                          const percentOfAsset = (valuePLN / totalIkeIkzeValue * 100).toFixed(1);
+                          const priceInfo = displayPriceData[pos.symbol];
+                          const change24h = priceInfo?.change24h || 0;
+                          const gain = (pos.currentPrice - pos.avgPrice) * pos.quantity;
+                          const gainPercent = ((pos.currentPrice - pos.avgPrice) / pos.avgPrice) * 100;
+
+                          return (
+                            <div 
+                              key={pos.id}
+                              className="bg-white dark:bg-slate-700 rounded-lg p-4 border border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500 transition-colors"
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex-grow">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-semibold text-slate-900 dark:text-slate-100">
+                                      {pos.symbol || pos.name}
+                                    </h4>
+                                    {pos.tags && pos.tags.length > 0 && (
+                                      <div className="flex gap-1 flex-wrap">
+                                        {pos.tags.slice(0, 3).map(tag => (
+                                          <span 
+                                            key={tag}
+                                            className={`px-2 py-0.5 text-xs rounded-full ${
+                                              tag === 'IKE' || tag === 'IKZE' 
+                                                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-semibold' 
+                                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                            }`}
+                                          >
+                                            {tag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {pos.symbol && pos.name && pos.symbol !== pos.name && (
+                                    <div className="text-sm text-slate-600 dark:text-slate-400">{pos.name}</div>
+                                  )}
+                                </div>
+                                <div className="text-right ml-4">
+                                  <div className="font-bold text-slate-900 dark:text-slate-100">
+                                    {valuePLN.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                                  </div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {percentOfAsset}% of IKE/IKZE {selectedIkeIkzeAssetType}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-3 text-sm">
+                                <div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">Quantity</div>
+                                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    {pos.quantity.toLocaleString('pl-PL', { maximumFractionDigits: 4 })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">Price</div>
+                                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    {isPLN ? 
+                                      `${pos.currentPrice.toFixed(2)} PLN` :
+                                      `$${pos.currentPrice.toFixed(2)}`
+                                    }
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">Avg Price</div>
+                                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                                    {isPLN ? 
+                                      `${pos.avgPrice.toFixed(2)} PLN` :
+                                      `$${pos.avgPrice.toFixed(2)}`
+                                    }
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 flex items-center justify-between">
+                                <div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">Gain/Loss</div>
+                                  <div className={`font-semibold ${gain >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {gain >= 0 ? '+' : ''}{(isPLN ? gain : gain * usdToPlnRate).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} PLN
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">Return</div>
+                                  <div className={`font-semibold ${gainPercent >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                  <button
+                    onClick={() => setSelectedIkeIkzeAssetType(null)}
                     className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
                   >
                     Close
